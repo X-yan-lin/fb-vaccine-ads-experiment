@@ -8,7 +8,11 @@ This study analyzes the comparative effectiveness of Facebook ad campaigns (rati
 - Potential psychological mechanisms driving behavior change
 - Heterogeneous effects across demographic subgroups
 
-### Data Documentation
+## Key Findings 
+
+Both emotional and rational Facebook ads significantly increased COVID-19 vaccine uptake, with emotional appeals proving more effective. Effects were consistent across demographic subgroups. Cluster analysis further confirmed that ad effectiveness did not vary meaningfully across population segments, suggesting broad applicability of these campaign strategies. These results demonstrate that targeted social media messaging—particularly emotion-based appeals—can effectively promote vaccination behavior at scale.
+
+## Data Documentation
 
 **Survey Instrument**  
 Complete questionnaire available in:  
@@ -41,19 +45,25 @@ Population parameters were calibrated using:
 
 
 ## Repository Structure
+
+```
 .
-├── analysis
-│   ├── Clustering.Rmd
-│   ├── Likert_Scale.Rmd
-│   ├── Processed_Data.Rmd
-│   └── Regression.Rmd
-├── data
-│   ├── Stimulated
-│   ├── processed
-│   └── DataTask_Covid.Rmd
-└── output
-    ├── figures
-    └── tables
+├── analysis/
+│   ├── Clustering.Rmd
+│   ├── Likert_Scale.Rmd
+│   ├── Processed_Data.Rmd
+│   └── Regression.Rmd
+├── data/
+│   ├── Stimulated/
+│   │   ├── assignment_data.csv
+│   │   ├── baseline_survey_data.csv
+│   │   └── endline_survey_data.csv
+│   ├── processed/
+│   └── DataTask_Covid.Rmd
+└── output/
+    ├── figures/
+    └── tables/
+```
 
 ## Data Pipeline
 
@@ -78,7 +88,7 @@ Rscript -e "rmarkdown::render('analysis/Processed_Data.Rmd')"
 **Outputs:**
 - `data/processed/full_data_cleaned.csv`
 
-### 3.1 Data Analysis (Regression)
+### 3.1 Data Analysis (Treatment effects on vaccination intentions and uptake) 
 Regression analysis to understand the effectivness of ad campaigns: 
 
 ```bash
@@ -88,7 +98,7 @@ Rscript -e "rmarkdown::render('analysis/Regression.Rmd')"
 - `output/tables/balance_test.html`
 - `output/tables/regression_results.html`
 
-### 3.2 Data Analysis (Likert Scale)
+### 3.2 Data Analysis (Potential psychological mechanisms driving behavior change)
 Kruskal-Wallis test & Pairwise Wilcoxon tests to understand the attitude changes among treated and control groups
 
 ```bash
@@ -99,7 +109,7 @@ Rscript -e "rmarkdown::render('analysis/Likert_Scales.Rmd')"
 - `/output/tables/kw_test_results.png`
 - `/output/tables/pairwise_wilcoxon_results.png`
 
-### 3.3 Data Analysis (Clustering)
+### 3.3 Data Analysis (Heterogeneous effects across demographic subgroups)
 K-mode clustering to investigate ad effectiveness among specific demographic clusters 
 
 ```bash
