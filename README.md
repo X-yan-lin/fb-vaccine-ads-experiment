@@ -48,21 +48,33 @@ Population parameters were calibrated using:
 
 ```
 .
-├── analysis/
-│   ├── Clustering.Rmd
-│   ├── Likert_Scale.Rmd
-│   ├── Processed_Data.Rmd
-│   └── Regression.Rmd
-├── data/
-│   ├── Stimulated/
-│   │   ├── assignment_data.csv
-│   │   ├── baseline_survey_data.csv
-│   │   └── endline_survey_data.csv
-│   ├── processed/
-│   └── DataTask_Covid.Rmd
-└── output/
-    ├── figures/
-    └── tables/
+├── LICENSE
+├── README.md
+├── analysis
+│   ├── Clustering.Rmd
+│   ├── Likert_Scale.Rmd
+│   ├── Processed_Data.Rmd
+│   └── Regression.Rmd
+├── data
+│   ├── DataTask_Covid.Rmd
+│   ├── Stimulated
+│   │   ├── assignment_data.csv
+│   │   ├── baseline_survey_data.csv
+│   │   └── endline_survey_data.csv
+│   └── processed
+│       └── full_data_cleaned.csv
+└── output
+    ├── figures
+    │   ├── effectiveness_cluster.png
+    │   ├── elbow_plot.png
+    │   └── mean_change_heatmap.png
+    └── tables
+        ├── balance_test.html
+        ├── cluster_summary.png
+        ├── clustering * regression_results.html
+        ├── kw_test_results.png
+        ├── pairwise_wilcoxon_results.png
+        └── regression_results.html
 ```
 
 ## Data Pipeline
