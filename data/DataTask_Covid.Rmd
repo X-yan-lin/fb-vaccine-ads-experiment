@@ -1,0 +1,387 @@
+---
+title: "DataStimulation"
+author: "Xingyan"
+date: "4/10/2025"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(randomNames)
+
+set.seed(123)
+n <- 5000
+```
+
+### GENERATE ASSIGNMENT DATA ###
+
+```{r}
+assign <- tibble(
+  participant_id = 1:5000,
+  ad_group = rep(sample(0:2), length.out = 5000) %>% sample()  
+)
+```
+
+### GENERATE BASELINE DATA ###
+
+```{r}
+baseline_data <- tibble(
+  participant_id = 1:n,
+  
+  # ========== Demographic Information ==========
+  # Age 
+  age = sample(c("13-17", "18-29", "30-49", "50-64", "65+", "Prefer not to say"), 
+               n, replace = TRUE, prob = c(0.04, 0.19, 0.35, 0.23, 0.19, 0.005)),
+  
+  # Gender 
+  gender = sample(c("Male", "Female", "Non-binary", "Other", "Prefer not to say"), 
+                  n, replace = TRUE, prob = c(0.43, 0.53, 0.03, 0.01, 0.005)),
+  
+  # Race
+  race = sample(c("White", "Black or African American", "Asian", "American Indian or Alaska Native", "Native Hawaiian or Pacific Islander", "Other" , "Prefer not to say"),
+                n, replace = TRUE, prob = c(0.67, 0.11, 0.06, 0.01,0.01,0.01,0.005)),
+
+  # Ethnicity
+  ethnicity = sample(c("Yes", "No", "Prefer not to say"), 
+                     n, replace = TRUE, prob = c(0.17, 0.78, 0.005)),
+  
+  # State
+  state = sample(state.name, n, replace = TRUE, prob = c(
+  rep(12, 1), rep(9, 1), rep(7, 1), rep(6, 1), rep(4, 3), rep(3, 5), 
+  rep(2, 10), rep(1, 30))[1:50] %>% {./sum(.)}),
+  
+  # Urbanicity
+  urbanicity = sample(c("Urban", "Rural", "Prefer not to say"), 
+                      n, replace = TRUE, prob = c(0.82, 0.18, 0.005)),
+  
+  # Income
+  income = sample(c("<$30K", "$30K-$69,999", "$70K-$99,999", ">100k", "Prefer not to say"), 
+                  n, replace = TRUE, prob = c(0.19, 0.27, 0.13, 0.41, 0.005)),
+  
+  # Education
+  education = sample(c("High school or Less", "Some college", "College +", "Prefer not to say"), 
+                     n, replace = TRUE, prob = c(0.39, 0.18, 0.43, 0.005)),
+  
+  # Political belief
+  political_belief = case_when(
+    income == ">100k" ~ sample(c("Conservative", "Moderate", "Liberal", "Prefer not to say"), 
+                              n, replace = TRUE, prob = c(0.40, 0.35, 0.20,0.005 )),
+    income == "<$30K" ~ sample(c("Conservative", "Moderate", "Liberal", "Prefer not to say"), 
+                              n, replace = TRUE, prob = c(0.25, 0.40, 0.30, 0.005)),
+    TRUE ~ sample(c("Conservative", "Moderate", "Liberal", "Prefer not to say"), 
+                n, replace = TRUE, prob = c(0.30, 0.40, 0.25, 0.005))
+  ),
+  
+  # ========== Social Media Usage ==========
+  #On a scale of 1-5, how much do you trust health-related information you encounter on social media like Facebook, X, and Instagram? 
+  social_media_trust = case_when(
+    age %in% c("13-17", "18-29") ~ sample(1:5, n, replace = TRUE, prob = c(0.10, 0.20, 0.30, 0.25, 0.15)),
+    TRUE ~ sample(1:5, n, replace = TRUE, prob = c(0.20, 0.30, 0.25, 0.15, 0.10))
+  ),
+  
+  # ========== Health Condition ==========
+  #Have you ever tested positive for COVID-19?
+  covid_positive = case_when(
+    age %in% c("50-64", "65+") ~ sample(c("Yes", "No", "Prefer not to say"), n, replace = TRUE, prob = c(0.35, 0.60, 0.005)),
+    TRUE ~ sample(c("Yes", "No", "Prefer not to say"), n, replace = TRUE, prob = c(0.25, 0.70,0.005 ))
+  ),
+  #How many doses of the COVID-19 vaccine have you received?
+  vaccine_doses = case_when(
+    age %in% c("65+") | political_belief == "Liberal" ~ sample(c("0", "1", "2", "3+", "Prefer not to say"), 
+                                                             n, replace = TRUE, prob = c(0.05, 0.10, 0.40, 0.40, 0.005)),
+    political_belief == "Conservative" ~ sample(c("0", "1", "2", "3+", "Prefer not to say"), 
+                                             n, replace = TRUE, prob = c(0.30, 0.20, 0.30, 0.15, 0.005)),
+    TRUE ~ sample(c("0", "1", "2", "3+", "Prefer not to say"), 
+                n, replace = TRUE, prob = c(0.15, 0.15, 0.40, 0.25, 0.005))
+  ),
+  #Do you have any chronic medical conditions? For example, Diabetes, Cancer (current or history of), and Heart disease. 
+  chronic_condition = case_when(
+    age %in% c("50-64", "65+") ~ sample(c("Yes", "No", "Prefer not to say"), n, replace = TRUE, prob = c(0.40, 0.55, 0.005)),
+    TRUE ~ sample(c("Yes", "No", "Prefer not to say"), n, replace = TRUE, prob = c(0.15, 0.80, 0.005))
+  ),
+  
+  # ========== Vaccination Hesitancy ==========
+  #Before the COVID-19 pandemic, how hesitant were you about getting other vaccines (e.g., flu shot)?
+  past_hesitancy = case_when(
+    vaccine_doses == "0" ~ sample(c("Very hesitant", "Moderately hesitant", "Neutral", "Slightly hesitant", "Not hesitant at all"), 
+                          n, replace = TRUE, prob = c(0.30, 0.25, 0.20, 0.15, 0.10)),
+    TRUE ~ sample(c("Very hesitant", "Moderately hesitant", "Neutral", "Slightly hesitant", "Not hesitant at all"), 
+                n, replace = TRUE, prob = c(0.05, 0.10, 0.20, 0.30, 0.35))
+  ),
+  
+  #I have or am planning to get COVID-19 vaccination in the near future 
+  vaccination_intention = case_when(
+    political_belief == "Conservative" ~ sample(1:5, n, replace = TRUE, prob = c(0.20, 0.25, 0.25, 0.20, 0.10)),
+    age %in% c("65+") ~ sample(1:5, n, replace = TRUE, prob = c(0.05, 0.10, 0.15, 0.40, 0.30)),
+    TRUE ~ sample(1:5, n, replace = TRUE, prob = c(0.10, 0.15, 0.25, 0.30, 0.20))
+  )
+)
+
+# Likert-scale questions
+likert_positive <- c(
+  "trust_medical", "trust_government",
+  "trust_pharma", "trust_media", "understand_vaccines",
+  "vaccine_immunity") #positive statements, for example, "I trust the medical professionals who recommend COVID-19 vaccines".
+
+likert_neutral <- 
+  c("personal_choice", "social_influence","social_media_impact") #neutral statements, for example, "I believe getting vaccinated should be a personal choice, not a requirement."
+  
+
+likert_negative <- c(
+"external_pressure", "judged", "bad_reaction","variant_concern", "safety_concern","conflicting_info","short_term_effects", "long_term_effects",
+  "risk_exaggerated", "preventive_measures", "access_delay", "incentives_help") #Statements with negative feelings like "I worry about being judged for my vaccination choices." 
+
+for (var in likert_positive) {
+  baseline_data <- baseline_data %>%
+    mutate(
+      !!var := as.numeric(
+        case_when(
+        political_belief == "Conservative" ~ sample(1:5, n, replace = TRUE, prob = c(0.30, 0.25, 0.20, 0.15, 0.10)),
+        TRUE ~ sample(1:5, n, replace = TRUE, prob = c(0.10, 0.15, 0.25, 0.30, 0.20))
+        )
+      )
+    )
+
+}
+
+for (var in likert_neutral) {
+  baseline_data <- baseline_data %>%
+    mutate(
+      !!var := as.numeric(
+        case_when(
+        TRUE ~ sample(1:5, n, replace = TRUE, prob = c(0.10, 0.25, 0.30, 0.25, 0.10))
+        )
+      )
+    )
+
+}
+
+for (var in likert_negative) {
+  baseline_data <- baseline_data %>%
+    mutate(
+      !!var := as.numeric(
+        case_when(
+          political_belief == "Conservative" ~ sample(1:5, n, replace = TRUE, prob = c(0.05, 0.10, 0.20, 0.25, 0.30)),
+          TRUE ~ sample(1:5, n, replace = TRUE, prob = c(0.10, 0.25, 0.30, 0.25, 0.10))
+        )
+      )
+    )
+}
+```
+
+### GENERATE ENDLINE DATA ###
+
+```{r}
+endline_data <- baseline_data %>% 
+  left_join(assign, by = "participant_id") %>%
+  slice_sample(n = 4500) %>%
+  mutate(
+    # Additional vaccine doses since study began 
+    additional_doses = case_when(
+      # Emotion ad effects - strongest overall
+      ad_group == 2 ~ sample(c("Yes","No"), n(), prob = c(0.65,0.35), replace = TRUE),
+      
+      # Reason ad effects - better than control
+      ad_group == 1 ~ sample(c("Yes","No"), n(), prob = c(0.55,0.45), replace = TRUE),
+      
+      # Control group - weakest
+      ad_group == 0 ~ sample(c("Yes","No"), n(), prob = c(0.30,0.70), replace = TRUE),
+      
+      # Subgroup effects for emotion ads
+      ad_group == 2 & age %in% c("30-49") & race == "Asian" & education == "Some college" ~
+        sample(c("Yes","No"), n(), prob = c(0.85,0.15), replace = TRUE),
+      
+      # Subgroup effects for reason ads
+      ad_group == 1 & political_belief == "Conservative" & age == "65+" & 
+        race == "White" & state == "California" & social_media_trust >= 4 ~
+        sample(c("Yes","No"), n(), prob = c(0.80,0.20), replace = TRUE),
+      TRUE ~ "No"
+    ),
+    
+    # Ad recall and reactions
+    # Emotion Ads are more memorable
+    ad_recall = case_when(
+      ad_group == 0 ~ sample(c("Yes", "No"), n(), prob = c(0.25, 0.75), replace = TRUE),
+      ad_group == 1 ~ sample(c("Yes", "No"), n(), prob = c(0.60, 0.40), replace = TRUE),
+      ad_group == 2 ~ sample(c("Yes", "No"), n(), prob = c(0.80, 0.20), replace = TRUE)
+    ),
+    
+    # Ad emotion responses
+    ad_emotion = map(1:n(), ~ {
+      responses <- character(0)
+      group <- ad_group[.x]
+      
+      # Responses for reason group 
+      if (group == 1) {
+        # More confident if disagreed about understanding vaccines
+        if (understand_vaccines[.x] %in% c(1,2)) {
+          if (runif(1) < 0.7) responses <- c(responses, "More confident in vaccines")
+        }
+        # Overwhelmed if agreed about conflicting info
+        if (conflicting_info[.x] %in% c(4,5)) {
+          if (runif(1) < 0.6) responses <- c(responses, "Overwhelmed")
+        }
+        # Less likely to feel anxious
+        if (runif(1) < 0.1) responses <- c(responses, "More anxious about side effects")
+        
+        # Default neutral if no other responses
+        if (length(responses) == 0 && runif(1) < 0.8) {
+          responses <- c(responses, "No strong feelings (neutral)")
+        }
+      }
+      
+      # Responses for emotion group 
+      else if (group == 2) {
+        # Motivated to protect others if strongly agree on external pressure
+        if (external_pressure[.x] == 5) {
+          if (runif(1) < 0.8) responses <- c(responses, "More motivated to protect others")
+        }
+        
+        # Strong response in women
+        if (gender[.x] == "Female") {
+          if (runif(1) < 0.7) responses <- c(responses, sample(c(
+            "More confident in vaccines", 
+            "More motivated to protect others"
+          ), 1))
+        }
+        
+        # Negative reaction in conservative males
+        if (gender[.x] == "Male" && political_belief[.x] == "Conservative") {
+          if (runif(1) < 0.7) responses <- c(responses, sample(c(
+            "More anxious about side effects", 
+            "Overwhelmed"
+          ), 1))
+        }
+        
+        # Default emotion responses
+        if (length(responses) == 0) {
+          responses <- c(responses, sample(c(
+            "More confident in vaccines",
+            "No strong feelings (neutral)"
+          ), 1, prob = c(0.6, 0.4)))
+        }
+      }
+      
+      # for control group 
+      else {
+        if (runif(1) < 0.8) responses <- c(responses, "No strong feelings (neutral)")
+      }
+      
+      # Combine multiple responses or return NA if no response selected
+      if (length(responses) > 0) {
+        paste(unique(responses), collapse = ", ")
+      } else {
+        NA_character_
+      }
+    }) %>% unlist(),
+    
+    # Overall change
+    overall_view_change = case_when(
+      ad_group == 2 ~ sample(c("Much more negative", "Negative", "Does not change", "Positive", "Much more positive"), 
+                           n(), prob = c(0.05, 0.10, 0.50, 0.25, 0.10), replace = TRUE),
+      ad_group == 1 ~ sample(c("Much more negative", "Negative", "Does not change", "Positive", "Much more positive"), 
+                           n(), prob = c(0.03, 0.07, 0.60, 0.25, 0.05), replace = TRUE),
+      TRUE ~ sample(c("Much more negative", "Negative", "Does not change", "Positive", "Much more positive"), 
+                  n(), prob = c(0.10, 0.15, 0.70, 0.04, 0.01), replace = TRUE)
+    )
+  ) 
+```
+
+
+```{r}
+# Likert Scale questions at endline 
+endline_data <- endline_data %>% 
+  mutate(
+    across(
+      .cols = all_of(c(likert_positive, likert_neutral, likert_negative)),
+      .fns = ~ {
+        original_value = .x
+        var_name = cur_column()
+        group = ad_group
+        
+        #Random noise to prevent identical responses with baseline 
+        base_change = sample(c(-1:1), length(original_value), 
+                             prob = c(0.2, 0.6, 0.2), replace = TRUE)
+        #noise = rnorm(length(original_value), mean = 0, sd = 0.3)
+        
+        result = case_when(
+          # Stronger effects with variance for emotion gruop 
+          group == 2 & var_name %in% likert_positive ~ 
+            original_value + base_change + 
+                   sample(c(0, 1), length(original_value), 
+                          prob = c(0.3, 0.7), replace = TRUE),
+          
+          group == 2 & var_name %in% likert_negative ~ 
+            original_value + base_change - 
+                   sample(c(0, 1, 2), length(original_value), 
+                          prob = c(0.2, 0.5, 0.3), replace = TRUE),
+          
+          # Moderate effects with variance for reason group 
+          group == 1 & var_name %in% likert_positive ~ 
+            original_value + base_change + 
+                   sample(c(0, 1), length(original_value), 
+                          prob = c(0.6, 0.4), replace = TRUE),
+          
+          group == 1 & var_name %in% likert_negative ~ 
+            original_value + base_change - 
+                   sample(c(0, 1), length(original_value), 
+                          prob = c(0.6, 0.4), replace = TRUE),
+          
+          # For control group 
+          TRUE ~ as.integer(original_value + base_change)
+        )
+        pmin(pmax(result, 1), 5)
+      },
+      .names = "{.col}_endline"
+    )
+  )
+
+# Subgroup effects 
+endline_data <- endline_data %>%
+  mutate(
+    # Emotion ads effects for trust_medical
+    trust_medical_endline = if_else(
+      ad_group == 2 & urbanicity == "Urban",
+      as.integer(pmin(trust_medical + sample(1:2, n(), replace = TRUE), 5)),
+      trust_medical_endline),
+    
+    # Reason ads effects for safety_concern
+    safety_concern_endline = if_else(
+      ad_group == 1 & education == "College +",
+      as.integer(pmax(safety_concern - sample(1:2, n(), replace = TRUE), 1)),
+      safety_concern_endline),
+    
+    # Conflicting info with more variance
+    conflicting_info_endline = if_else(
+      ad_group == 1,
+      as.integer(pmin(conflicting_info + sample(0:1, n(), replace = TRUE), 5)),
+      conflicting_info_endline)
+  ) %>% 
+  mutate(across(ends_with("_endline"), as.integer))
+
+#Clean endline_data
+endline_data <- dplyr::select(endline_data,
+                              participant_id,
+                              additional_doses,
+                              ad_recall,
+                              ad_emotion,
+                              dplyr::ends_with("_endline"),
+                              overall_view_change
+)
+
+
+```
+
+```{r}
+write_csv(baseline_data, "Stimulated/baseline_survey_data.csv")
+write_csv(endline_data, "Stimulated/endline_survey_data.csv")
+write_csv(assign, "Stimulated/assignment_data.csv")
+```
+
+

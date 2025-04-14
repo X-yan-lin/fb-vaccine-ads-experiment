@@ -1,0 +1,188 @@
+---
+title: "Clustering_c"
+author: "Xingyan"
+date: "2025-04-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(klaR)
+data <- read_csv("../data/processed/full_data_cleaned.csv")
+```
+## Clustering 
+
+```{r}
+features <- c(
+  "age","race","gender","education","urbanicity","income","political_belief", "past_hesitancy","vaccine_doses"
+)
+cluster_data <- data %>%
+  dplyr::select(all_of(features)) %>%
+  mutate(across(everything(), as.character))
+cluster_data <- cluster_data %>% drop_na()
+
+set.seed(123)
+cost_df <- data.frame(k = 1:6, cost = rep(NA, 6))
+
+for (i in 1:6) {
+  kmodes_result <- kmodes(cluster_data, modes = i, iter.max = 10)
+  cost_df$cost[i] <- kmodes_result$withindiff
+}
+
+# Plot elbow curve to decide optimal number for clusters
+elbow_plot <- ggplot(cost_df, aes(x = k, y = cost)) +
+  geom_line(color = "steelblue") +
+  geom_point(color = "steelblue") +
+  labs(title = "Elbow Method for Optimal k",
+       x = "Number of Clusters",
+       y = "Within-Cluster Distance") +
+  scale_x_continuous(breaks = 1:6) +
+  theme_minimal()
+
+ggsave(
+  filename = "../output/figures/elbow_plot.png",
+  plot = elbow_plot,
+  device = "png",
+  width = 10,       
+  height = 8,      
+  units = "in",
+  dpi = 300,       
+  bg = "white"    
+)
+
+```
+
+```{r}
+k <- 3
+kmodes_result <- kmodes(cluster_data, modes = k, iter.max = 50)
+data_cluster <- data %>% 
+  mutate(cluster = factor(paste("Cluster", kmodes_result$cluster)))
+
+tryCatch({
+  kmodes_result <- kmodes(cluster_data, modes = k, iter.max = 50)
+
+  data$cluster <- factor(paste("Cluster", kmodes_result$cluster))
+
+}, error = function(e) {
+  message("Standard k-modes failed. Trying modified approach...")
+
+  cluster_data_reduced <- cluster_data %>%
+    select(age, gender, education, past_hesitancy, vaccine_doses)
+
+  kmodes_result <- kmodes(cluster_data_reduced, modes = k, iter.max = 50)
+  data$cluster <<- factor(paste("Cluster", kmodes_result$cluster))
+})
+
+cluster_profiles <- data %>%
+  group_by(cluster) %>%
+  summarize(
+    n = n(),
+    top_age = names(which.max(table(age))),
+    top_education = names(which.max(table(education))),
+    pct_additional = mean(additional_doses == "Yes", na.rm = TRUE),
+    emotion_response = mean(ad_group == "Emotion" & additional_doses == "Yes", na.rm = TRUE),
+    reason_response = mean(ad_group == "Reason" & additional_doses == "Yes", na.rm = TRUE)
+  )
+
+# Compare ad effectiveness by cluster
+effectiveness_cluster <- data %>%
+  filter(ad_group %in% c("Emotion", "Reason")) %>%
+  group_by(cluster, ad_group) %>%
+  summarize(response_rate = mean(additional_doses == "Yes")) %>%
+  ggplot(aes(x = cluster, y = response_rate, fill = ad_group)) +
+  geom_col(position = "dodge") +
+  labs(title = "Ad Effectiveness by Cluster")
+
+ggsave(
+  filename = "../output/figures/effectiveness_cluster.png",
+  plot = effectiveness_cluster,
+  device = "png",
+  width = 10,       
+  height = 8,      
+  units = "in",
+  dpi = 300,       
+  bg = "white"    
+)
+```
+
+```{r}
+#Cluster summary statistics 
+cluster_summary <- data_cluster %>%
+  group_by(cluster) %>%
+  summarize(
+    n = n(),
+    pct = round(n/nrow(data_cluster), 3),
+    across(all_of(features), 
+           ~ paste(names(sort(table(.), decreasing = TRUE)[1:2]), collapse = "/")),
+    .groups = "drop"
+  )
+
+cluster_summary <- cluster_summary %>%
+  gt() %>%
+  tab_header(
+    title = md("**Clustering Summary Statistics**")
+  ) %>% 
+    tab_options(
+    table.width = px(1000),
+    column_labels.font.weight = "bold",
+    table.font.size = "50%"
+  )
+
+tryCatch({
+  gtsave(cluster_summary, 
+         filename = "../output/tables/cluster_summary.png",
+         vwidth = 1000,
+         vheight = 600,
+         zoom = 2)
+}, error = function(e) {
+  # Fallback method if gtsave fails
+  html_file <- tempfile(fileext = ".html")
+  gt::gtsave(cluster_summary, html_file)
+  webshot2::webshot(html_file, 
+                   "../output/tables/cluster_summary.png",
+                   selector = "table",
+                   vwidth = 1000)
+})
+```
+
+## Regression 
+
+*Method*: 
+
+One key question I would like to explore is if the ad effectiveness varies among clusters. To furter investigate this question, I ran a regession on additional doses using cluster as independent varible. 
+
+*Finding* 
+
+There is no significant interactions, indicating that ad effectiveness does not differ by identified clusters. 
+
+```{r}
+data_cr <- data %>%
+  mutate(additional_doses_num = as.numeric(additional_doses == "Yes"))
+
+model_cluster <- glm(
+  additional_doses_num ~ cluster * ad_group,
+  data = data_cr,
+  family = binomial
+)
+
+output_file <- here::here("output", "tables", "clustering * regression_results.html")
+
+stargazer(model_cluster,
+          type = "html",
+          out = output_file,
+          title = "Ad effectiveness by clusters",
+          covariate.labels = c(
+            "Cluster 2", "Cluster 3", "Emotion","Reason",
+            "Cluster 2 * Emotion", "Cluster 3 * Emotion", 
+            "Cluster 2 * Reason", "Cluster 3 * Reason", 
+            "Constant"
+          ),
+          model.numbers = FALSE
+          )
+
+```
+

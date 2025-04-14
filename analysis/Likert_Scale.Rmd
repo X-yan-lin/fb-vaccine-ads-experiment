@@ -1,0 +1,262 @@
+---
+title: "Likert_Scales"
+author: "Xingyan"
+date: "2025-04-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,echo=F}
+library(stringr)
+library(ggplot2)
+library(purrr)
+library(rstatix)
+library(broom)
+library(rstatix)
+library(gt)
+library(webshot2)
+
+
+data <- read_csv("../data/processed/full_data_cleaned.csv")
+```
+## Data Exploration 
+
+### Heatmap of mean changes by ad group
+
+*Notes*: Please note that likert_scale scores were reversed for negative-feeling questions and increased likert_score favors vaccination uptake attitude. 
+
+*Findings*: 
+
+- Both emotion and reason ads could decrease vaccination hesitancy with increasing positive impact on personal values, trust, social environemnt, personal anacdotes, Environmental Fluctuation, Knowledge, Perceived Risk, and Systems of Care, where the impact of emotion ads seems more significant than that of reason ads (more dramatical increase in the mean values)
+
+- For conflicting_info variable, the mean value decrease by 0.41 for reason group, which indicate the potential backfire effect for reason ads. 
+
+```{r}
+data_likert <- data %>%
+  mutate(across(
+    .cols = ends_with("_endline"),
+    .fns = ~ . - get(str_remove(cur_column(), "_endline")),
+    .names = "change_{.col}"
+  )) %>%
+  rename_with(~ str_remove(., "_endline"), starts_with("change_"))
+```
+
+```{r}
+change_summary <- data_likert %>%
+  group_by(ad_group) %>%
+  summarise(across(starts_with("change_"), mean, na.rm = TRUE)) %>%
+  pivot_longer(-ad_group, names_to = "variable", values_to = "mean_change")
+
+heatmap_plot <- change_summary %>%
+  ggplot(aes(x = ad_group, y = variable, fill = mean_change)) +
+  geom_tile(color = "white", linewidth = 0.5) + 
+  scale_fill_gradient2(
+    low = "#D55E00",
+    mid = "white",
+    high = "#0072B2", 
+    midpoint = 0, 
+    limits = c(-1, 1),
+    name = "Mean Change"
+  ) +
+  geom_text(
+    aes(label = sprintf("%.2f", mean_change)), 
+    color = "black", 
+    size = 3.5
+  ) +
+  labs(
+    title = "Mean Change in Likert Scores by Ad Group",
+    x = "Ad Group", 
+    y = "Variable"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 8),
+    legend.position = "right",
+    panel.grid = element_blank()
+  ) +
+  coord_fixed(ratio = 0.8)  
+
+ggsave(
+  filename = "../output/figures/mean_change_heatmap.png",
+  plot = heatmap_plot,
+  device = "png",
+  width = 10,       
+  height = 8,      
+  units = "in",
+  dpi = 300,       
+  bg = "white"    
+)
+```
+## Data Analysis 
+
+### Kruskal-Wallis test 
+
+*Method*: Used Kruskal-Wallis tests to identify variables with significant differences between groups. 
+
+*Results*: 
+
+- There are significant differences exist between ad groups for most variables and there are only three variables that did not show significant differenes, namely, change_personal_choice, change_social_media_impact and change_social_influenc. 
+
+- The results are consistent with regression results where emotion and reason groups significantly promoted vaccine uptake behavior. 
+
+```{r}
+kw_results <- data_likert %>%
+  dplyr::select(starts_with("change_")) %>%
+  map_df(~ {
+    kruskal.test(.x ~ data$ad_group) %>%
+      broom::tidy()
+  }, .id = "variable") %>%
+  mutate(
+    p.adj = p.adjust(p.value, method = "BH"),
+    p.value.fmt = case_when(
+      p.value < 0.001 ~ sprintf("%.2e***", p.value),
+      p.value < 0.01 ~ sprintf("%.3f**", p.value),
+      p.value < 0.05 ~ sprintf("%.3f*", p.value),
+      TRUE ~ sprintf("%.3f", p.value)
+    ),
+    p.adj.fmt = case_when(
+      p.adj < 0.001 ~ sprintf("%.2e***", p.adj),
+      p.adj < 0.01 ~ sprintf("%.3f**", p.adj),
+      p.adj < 0.05 ~ sprintf("%.3f*", p.adj),
+      TRUE ~ sprintf("%.3f", p.adj)
+    )
+  ) %>%
+  arrange(p.adj) %>% 
+  select(variable, statistic, `p-value` = p.value.fmt, 
+         `adj. p-value` = p.adj.fmt)
+
+kw_table_gt <- kw_results %>%
+  gt() %>%
+  tab_header(
+    title = md("**Kruskal-Wallis Test Results**"),
+    subtitle = "Comparing Likert Scale Changes Across Ad Groups"
+  ) %>%
+  cols_label(
+    variable = "Variable",
+    statistic = md("χ² Statistic"),
+    `p-value` = md("p-value"),
+    `adj. p-value` = md("Adj. p-value")
+  ) %>%
+  fmt_number(columns = c(statistic), decimals = 2) %>%
+  tab_options(
+    table.width = px(800),
+    column_labels.font.weight = "bold",
+    table.font.size = "90%"
+  ) %>%
+  tab_footnote(
+    footnote = "*** p < 0.001; ** p < 0.01; * p < 0.05",
+    locations = cells_column_labels()
+  ) 
+
+tryCatch({
+  gtsave(kw_table_gt, 
+         filename = "../output/tables/kw_test_results.png",
+         vwidth = 1000,
+         vheight = 600,
+         zoom = 2)
+}, error = function(e) {
+  # Fallback method if gtsave fails
+  html_file <- tempfile(fileext = ".html")
+  gt::gtsave(kw_table_gt, html_file)
+  webshot2::webshot(html_file, 
+                   "../output/tables/kw_test_results.png",
+                   selector = "table",
+                   vwidth = 1000)
+})
+
+```
+
+### Pairwise Wilcoxon tests
+
+More detailed comparison with pairwise wilcoxon tests: 
+
+- Control vs. Reason ads 
+- Control vs. Emotion ads
+- Reason vs. Emotion ads
+
+```{r}
+# Only focus on signifiacnt variables 
+kw_results <- kw_results %>%
+  mutate(
+    p.value.num = as.numeric(str_extract(`p-value`, "^[0-9.e+-]+")),
+    p.adj.num = as.numeric(str_extract(`adj. p-value`, "^[0-9.e+-]+"))
+  ) 
+sig_vars <- kw_results %>%
+  filter(p.adj.num < 0.05) %>%
+  pull(variable)
+
+pairwise_results <- map_dfr(sig_vars, ~ {
+  data_likert %>%
+    pairwise_wilcox_test(
+      reformulate("ad_group", response = .x),
+      p.adjust.method = "bonferroni",
+      detailed = TRUE
+    ) %>%
+    mutate(variable = .x,
+           effect_size = abs(statistic/(n1*n2)))
+})
+
+pairwise_results <- pairwise_results %>%
+    mutate(
+    p.value.fmt = case_when(
+      p < 0.001 ~ sprintf("%.2e***", p),
+      p < 0.01 ~ sprintf("%.3f**", p),
+      p < 0.05 ~ sprintf("%.3f*", p),
+      TRUE ~ sprintf("%.3f", p)
+    ),
+    p.adj.fmt = case_when(
+      p.adj < 0.001 ~ sprintf("%.2e***", p.adj),
+      p.adj < 0.01 ~ sprintf("%.3f**", p.adj),
+      p.adj < 0.05 ~ sprintf("%.3f*", p.adj),
+      TRUE ~ sprintf("%.3f", p.adj)
+    ), 
+    comparison = paste(group1, "vs", group2), 
+    effect_size = round (effect_size, 3)
+  ) %>% 
+  select(Variable = variable, Comparison = comparison,'p.value' = p.value.fmt, 'p.adj' = p.adj.fmt, 'Effect Size' = effect_size) 
+
+
+```
+
+```{r}
+gt_table <- pairwise_results %>%
+  gt() %>%
+  tab_header(
+    title = md("**Pairwise Wilcoxon Test Results**"),
+    subtitle = "Significant Likert Scale Changes Between Ad Groups"
+  ) %>%
+  tab_options(
+    table.width = px(900),
+    column_labels.font.weight = "bold",
+    table.font.size = "90%"
+  ) %>%
+  cols_align(align = "center", columns = c(`p.value`, `p.adj`))
+
+tryCatch({
+  gtsave(gt_table, 
+         filename = "../output/tables/pairwise_wilcoxon_results.png",
+         vwidth = 1200,
+         vheight = 800,
+         zoom = 2)
+}, error = function(e) {
+  html_file <- tempfile(fileext = ".html")
+  gt::gtsave(gt_table, html_file)
+  webshot2::webshot(html_file, 
+                   "../output/tables/pairwise_wilcoxon_results.png",
+                   selector = "table",
+                   vwidth = 1200,
+                   vheight = 800)
+})
+```
+
+
+
+
+
+

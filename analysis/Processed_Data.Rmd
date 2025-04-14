@@ -1,0 +1,104 @@
+---
+title: "Processed_Data"
+author: "Xingyan"
+date: "2025-04-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r,echo=F}
+library(dplyr)
+library(tidyr)
+library(here)
+library(readr)
+library(stringr)
+
+baseline <- read_csv("../data/Stimulated/baseline_survey_data.csv")
+endline <- read_csv("../data/Stimulated/endline_survey_data.csv")
+assignment <- read_csv("../data/Stimulated/assignment_data.csv")
+```
+### MERGE
+
+```{r}
+# Merge three datasets and only keep participants who finished both baseline and endline surveys 
+data <- assign %>% 
+  left_join(baseline_data, by = "participant_id") %>% 
+  inner_join(endline_data, by = "participant_id") %>% 
+  mutate(
+    ad_group = case_when(
+      ad_group == 0 ~ "Control",
+      ad_group == 1 ~ "Reason",
+      ad_group == 2 ~ "Emotion",
+      TRUE ~ NA_character_
+    ) %>% factor(levels = c("Control", "Reason", "Emotion"))
+  )
+```
+
+### DATA EXPLORATION
+
+```{r}
+#Check missing values 
+col_missing <- sapply(data, function(x) sum(is.na(x)))
+#Check duplciated values 
+duplicated_rows <- sum(duplicated(data))
+duplicaed_id <- sum(duplicated(data$participant_id))
+#Check unique values for each columns 
+unique_values <- sapply(data, unique)
+#Summary 
+summary <- summary(data)
+```
+
+### DATA PROCESSING
+
+Include 1)Transform select all that apply variables into dummy variables; 2)Reverse Likert scale scores for negative-feeling questions
+
+```{r}
+# Transform select all that apply variables into dummary variables 
+# Identify all unique emotion responses
+unique_emotions <- data %>% 
+  pull(ad_emotion) %>% 
+  str_split(", ") %>% 
+  unlist() %>% 
+  unique() %>% 
+  na.omit()
+
+# Create dummy variables for each emotion
+for (emotion in unique_emotions) {
+  # Clean the emotion name to create valid column names
+  col_name <- emotion %>% 
+    tolower() %>% 
+    str_replace_all("[^a-z]", "_") %>% 
+    str_replace_all("_+", "_") %>% 
+    str_remove("_$")
+  
+  data <- data %>% 
+    mutate(!!col_name := as.integer(str_detect(ad_emotion, fixed(emotion))))
+}
+
+# Reverse Likert scale scores for negative-feeling questions
+# Identify all negative-feeling Likert scale columns
+likert_negative <- c(
+"external_pressure", "judged", "bad_reaction","variant_concern", "safety_concern","conflicting_info","short_term_effects", "long_term_effects",
+  "risk_exaggerated", "preventive_measures", "access_delay", "incentives_help") #Statements with negative feelings like "I worry about being judged for my vaccination choices." 
+
+negative_cols <- c(likert_negative, paste0(likert_negative, "_endline"))
+
+# Function to reverse Likert scale scores
+reverse_likert <- function(x) {
+  ifelse(is.na(x), NA, 6 - x)
+}
+
+# Apply the reversal to all negative-feeling columns
+data <- data %>% 
+  mutate(across(any_of(negative_cols), reverse_likert))
+```
+
+```{r}
+write_csv(data, "../data/processed/full_data_cleaned.csv")
+```
+
+

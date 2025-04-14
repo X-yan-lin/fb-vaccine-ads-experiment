@@ -1,0 +1,167 @@
+---
+title: 'Regression'
+author: "Xingyan"
+date: "2025-04-11"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,echo=F}
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(gtsummary)
+library(cobalt)
+library(stargazer)
+library(stringr)
+library(sandwich)
+library(lmtest)
+
+
+data <- readr::read_csv("../data/processed/full_data_cleaned.csv")
+
+```
+
+## Balance Test
+
+### Method
+
+Include demographic information, trust towards social media and vaccination baseline information in balance test. 
+
+### Result
+
+There is no significant imbalance across treatment and control arms. Treatment and control groups are randomly assigned.
+
+```{r}
+factor_vars <- c("age", "gender", "race", "ethnicity", "income", "education", "political_belief", "urbanicity","social_media_trust","vaccination_intention","vaccine_doses", "state")
+data <- data %>%
+  mutate(across(all_of(factor_vars), as.factor))
+
+# Create summary table with balance tests
+balance_table <- dplyr::select(data,
+                               ad_group, age, gender, race, ethnicity, income, education, 
+                               political_belief, urbanicity,
+                               social_media_trust, vaccination_intention, vaccine_doses, state) %>%
+  tbl_summary(
+    by = ad_group,
+    statistic = list(all_categorical() ~ "{n} ({p}%)"),
+    digits = all_categorical() ~ c(0, 1)
+  ) %>%
+  add_p(test = list(all_categorical() ~ "chisq.test",
+                   all_continuous() ~ "aov")) %>%
+  modify_header(label = "**Variable**") %>%
+  modify_spanning_header(c("stat_1", "stat_2", "stat_3") ~ "**Treatment Group**") %>%
+  bold_labels()
+
+
+#Save balance test table 
+balance_gt <- balance_table %>% 
+  as_gt() %>%
+  gt::tab_header(
+    title = "Balance Across Treatment Groups"
+  )
+
+gt::gtsave(
+  data = balance_gt,
+  filename = here::here("output", "tables", "balance_test.html"),
+  inline_css = TRUE
+)
+
+balance_table
+
+```
+
+## Regression 
+
+### Hypotheses 
+
+H1a: Emotion ads will significantly increase vaccine uptake.
+
+H1b: Reason ads will significantly increase vaccine uptake. 
+
+### Result
+Both hypotheses about ad effectiveness were strongly supported:
+
+**H1a: Emotion ads increase vaccine uptake**  
+- All models show large, highly significant positive effects (β = 1.35 to 1.48, p < 0.001)
+- Odds ratios of e<sup>1.45</sup> ≈ 4.26 indicate emotion ad recipients had 4.26 times higher odds of getting additional doses than control
+
+**H1b: Reason ads increase vaccine uptake**  
+- Consistent positive effects across models (β = 0.94 to 1.02, p < 0.001)
+- Smaller effect than emotion ads (e<sup>0.94</sup> ≈ 2.56 times higher odds)
+
+**Demographic Pattern**  
+There is limited evidence for demographic moderators, which suggest emotion/reason ads worked similarly across most subgroups. 
+
+```{r}
+# Remove Rows with any "Prefer not to say" Responses
+target_cols <- c("age", "gender", "race", "ethnicity", "income", "education", "political_belief", 
+                 "covid_positive", "vaccine_doses", "chronic_condition")
+
+df <- data %>% filter(if_all(all_of(target_cols),~!str_detect(.x, fixed("Prefer not to say", ignore_case = TRUE)))) 
+```
+
+```{r}
+#Prepare variables for regression modeling 
+df <- df %>% 
+  mutate(additional_doses = as.numeric(additional_doses == "Yes"),
+         age = factor(age, levels = c("13-17", "18-29", "30-49", "50-64", "65+")),
+         gender = factor(gender, levels = c("Female","Male")),
+         race = factor(race, levels = c("White", "Black or African American", "Asian", "American Indian or Alaska Native", "Native Hawaiian or Pacific Islander", "Other" )),
+         urbanicity = factor(urbanicity, levels = c("Urban","Rural")),
+         income = factor(income, levels = c("<$30K", "$30K-$69,999", "$70K-$99,999", ">100k")),
+         education = factor(education,levels = c("High school or Less", "Some college", "College +", "Prefer not to say")),
+         political_belief = factor(political_belief, levels = c("Conservative","Moderate","Liberal"))
+         )
+``` 
+
+```{r}
+models <- list(
+  "Model 1" = glm(additional_doses ~ ad_group, 
+                 data = df, family = binomial),
+  
+  "Model 2" = glm(additional_doses ~ ad_group + race + political_belief + urbanicity + 
+                  ad_group*race,
+                 data = df, family = binomial),
+  
+  "Model 3" = glm(additional_doses ~ ad_group + race + political_belief + urbanicity + 
+                  ad_group*political_belief,
+                 data = df, family = binomial),
+  
+  "Model 4" = glm(additional_doses ~ ad_group + race + political_belief + urbanicity + 
+                  ad_group*urbanicity,
+                 data = df, family = binomial)
+)
+
+#Standard errors clustered by state in parentheses
+clustered_models <- lapply(models, function(m) {
+  coeftest(m, vcov = vcovCL(m, cluster = ~state, type = "HC1"))
+})
+
+output_file <- here::here("output", "tables", "regression_results.html")
+
+stargazer(models,
+          se = lapply(clustered_models, function(x) x[, "Std. Error"]),
+          p = lapply(clustered_models, function(x) x[, "Pr(>|z|)"]),
+          type = "html",
+          out = output_file,
+          title = "Impact of Each Treatment Arm on Additional Vaccination Dose",
+          column.labels = names(models),
+          covariate.labels = c(
+            "Emotion Ad", "Reason Ad",
+            "Black/African American", "Asian","American Indian or Alaska Native", "Native Hawaiian or Pacific Islander", "Other Race", "Moderate","Liberal", "Rural", "Black/African America × Emotion", "Black/African America × Reason", "Asian× Emotion","Asian× Reason", "American Indian or Alaska Native × Emotion", "American Indian or Alaska Native × Reason", "Native Hawaiian or Pacific Islander × Emotion", "Native Hawaiian or Pacific Islander × Reason", "Other Race × Emotion", "Other Race × Reason", "Moderate × Emotion","Moderate × Reason", "Liberal × Emotion","Liberal × Reason", "Rural × Emotion","Rural × Reason"
+          ),
+          model.numbers = FALSE,
+          notes = c("Standard errors clustered by state in parentheses",
+                   "*** p<0.01, ** p<0.05, * p<0.1")
+          )
+
+
+```
+
+
